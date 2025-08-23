@@ -1,6 +1,6 @@
 # main.py
 
-import sys
+import sys, os
 from pkg.calculator import Calculator
 from pkg.render import render
 
