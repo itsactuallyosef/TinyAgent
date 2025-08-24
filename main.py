@@ -2,35 +2,56 @@ from google import genai
 from google.genai import types
 
 import os, sys
+import argparse
 from dotenv import load_dotenv
 
-# API Client
-api_key = os.environ.get("GEMINI_API_KEY")
-client = genai.Client(api_key=api_key)
+from functions.get_files_info import get_files_info_schema
+from functions.get_file_content import get_file_content_schema
+from functions.run_python import run_python_file_schema
+from functions.write_file import write_file_schema
+
+
+## Argument Parser
+parser = argparse.ArgumentParser(description="AI Code Assistant")
+parser.add_argument("prompt", type=str, help="The prompt to send to the AI model")
+parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
+
+available_functions = types.Tool(
+    function_declarations=[
+        get_files_info_schema,
+        get_file_content_schema,
+        run_python_file_schema,
+        write_file_schema
+    ]
+)
+
+SYSTEM_PROMPT = """
+You are a helpful AI coding agent.
+
+When a user asks a question or makes a request, make a function call plan. You can perform the following operations:
+
+- List files and directories
+- Read file contents
+- Execute Python files with optional arguments
+- Write or overwrite files
+
+All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
+"""
 
 def main():
     load_dotenv()
 
-    verbose = "--verbose" in sys.argv
-    args = []
-    for arg in sys.argv[1:]:
-        if not arg.startswith("--"):
-            args.append(arg)
-    
-    if not args:
-        print("AI Code Assistant")
-        print('\nUsage: python main.py "your prompt here" [--verbose]')
-        print('Example: python main.py "How do I build a calculator app?"')
-        sys.exit(1)
+    api_key = os.environ.get("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key)
 
-    prompt = " ".join(args)
-    
-    if verbose:
-        print(f"User prompt: {prompt}\n")
+    args = parser.parse_args()
+
+    if args.verbose:
+        print(f"User prompt: {args.prompt}\n")
 
     # Messages stored for tracking the conversation
     messages = [
-        types.Content(role="user", parts=[types.Part(text=prompt)])
+        types.Content(role="user", parts=[types.Part(text=args.prompt)])
     ]
 
     generate_content(client, messages, True)
@@ -39,7 +60,12 @@ def main():
 def generate_content(client: genai.Client, message, verbose: bool):
     response = client.models.generate_content(
         model="gemini-2.0-flash-001",
-        contents=message
+        contents=message,
+        # lets you tweak how the model generates output—like controlling tone, length, randomness, safety, tool usage, and more
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            tools=[available_functions]    
+        )
     )
 
     # verbose output
@@ -48,7 +74,8 @@ def generate_content(client: genai.Client, message, verbose: bool):
         print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
     
     print("Response:")
-    print(response.text)
+    for function_call in response.function_calls:
+        print(f"Calling function: {function_call.name}({function_call.args})")
 
 if __name__ == "__main__":
     main()

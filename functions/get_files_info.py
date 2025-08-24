@@ -1,4 +1,5 @@
 import os
+from google.genai import types
 
 # Function to get file information in a specified directory
 # Example usage: get_files_info("/home/user/project", "src")
@@ -36,3 +37,18 @@ def get_files_info(working_directory, directory="."):
         return f"Error: '{str(e)}'"
     
     return "\n".join(result)
+
+
+get_files_info_schema = types.FunctionDeclaration(
+    name="get_files_info",
+    description="List information about files in a specified directory along with their sizes within the working directory.",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "directory": types.Schema(
+                type=types.Type.STRING,
+                description="The target directory to list files from, relative to the working directory. Defaults to current directory."
+            )
+        } 
+    )
+)
