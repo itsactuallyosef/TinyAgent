@@ -9,6 +9,7 @@ from functions.get_files_info import get_files_info_schema
 from functions.get_file_content import get_file_content_schema
 from functions.run_python import run_python_file_schema
 from functions.write_file import write_file_schema
+from functions.call_function import call_function
 
 
 ## Argument Parser
@@ -16,6 +17,7 @@ parser = argparse.ArgumentParser(description="AI Code Assistant")
 parser.add_argument("prompt", type=str, help="The prompt to send to the AI model")
 parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
 
+# types.Tool is a collection of functions the model can call
 available_functions = types.Tool(
     function_declarations=[
         get_files_info_schema,
@@ -64,7 +66,7 @@ def generate_content(client: genai.Client, message, verbose: bool):
         # lets you tweak how the model generates output—like controlling tone, length, randomness, safety, tool usage, and more
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
-            tools=[available_functions]    
+            tools=[available_functions] # 'tools' are the functions the model can call
         )
     )
 
@@ -72,10 +74,23 @@ def generate_content(client: genai.Client, message, verbose: bool):
     if verbose:
         print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
         print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+        print("---------------------------------------------------------------")
     
-    print("Response:")
+    # response.function_calls is a list of function calls the model wants to make
+    # “If I had the ability to run functions, here’s what I would call in order.” is what the model is saying
+
+    if not response.function_calls:
+        print(response.text)
+        return
+
     for function_call in response.function_calls:
-        print(f"Calling function: {function_call.name}({function_call.args})")
+        function_call_result = call_function(function_call, verbose)
+        function_response = function_call_result.parts[0].function_response.response
+
+        if not function_response:
+            raise ValueError("Function response is empty")
+        elif verbose:
+            print(f"-> {function_response['result']}")
 
 if __name__ == "__main__":
     main()

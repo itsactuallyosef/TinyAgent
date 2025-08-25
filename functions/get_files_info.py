@@ -1,13 +1,6 @@
 import os
 from google.genai import types
 
-# Function to get file information in a specified directory
-# Example usage: get_files_info("/home/user/project", "src")
-# Output: List of files and directories in "src" relative to "/home/user/project"
-
-# It restricts access to the specified working directory and its subdirectories only by
-# checking if the absolute path starts with the working directory's absolute path.
-
 def get_files_info(working_directory, directory="."):
     full_path = os.path.join(working_directory, directory)
     
