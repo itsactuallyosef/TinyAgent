@@ -1,11 +1,9 @@
-# tests.py
-
 import unittest
 from pkg.calculator import Calculator
 
 
 class TestCalculator(unittest.TestCase):
-    def setUp(self):
+    def setUp(self):  
         self.calculator = Calculator()
 
     def test_addition(self):
@@ -43,6 +41,10 @@ class TestCalculator(unittest.TestCase):
     def test_not_enough_operands(self):
         with self.assertRaises(ValueError):
             self.calculator.evaluate("+ 3")
+
+    def test_precedence(self):
+        result = self.calculator.evaluate("3 + 2 * 5")
+        self.assertEqual(result, 13)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@ import os, sys
 import argparse
 from dotenv import load_dotenv
 
+from typing import List, Union
+
 from functions.get_files_info import get_files_info_schema
 from functions.get_file_content import get_file_content_schema
 from functions.run_python import run_python_file_schema
@@ -30,7 +32,10 @@ available_functions = types.Tool(
 SYSTEM_PROMPT = """
 You are a helpful AI coding agent.
 
-When a user asks a question or makes a request, make a function call plan. You can perform the following operations:
+When a user asks a question or makes a request, make a function call plan.
+Don't ask for more information.
+Use the functions to get information about the files, read file contents, run Python files, and write files as needed to fulfill the user's request.
+You can perform the following operations:
 
 - List files and directories
 - Read file contents
@@ -56,41 +61,71 @@ def main():
         types.Content(role="user", parts=[types.Part(text=args.prompt)])
     ]
 
-    generate_content(client, messages, True)
+    generate_content(client, messages, args.verbose)
+    print("\n--- Conversation History ---")
+    for user_msg in messages:
+        print(user_msg.role + ": " + "".join([part.text for part in user_msg.parts if part.text]))
+        
 
+def generate_content(client: genai.Client, message: Union[List, str], verbose: bool):
+    MAX_ITERATIONS = 20
 
-def generate_content(client: genai.Client, message, verbose: bool):
-    response = client.models.generate_content(
-        model="gemini-2.0-flash-001",
-        contents=message,
-        # lets you tweak how the model generates output—like controlling tone, length, randomness, safety, tool usage, and more
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            tools=[available_functions] # 'tools' are the functions the model can call
-        )
-    )
+    for i in range(MAX_ITERATIONS):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-001",
+                contents=message,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    tools=[available_functions]
+                )
+            )
 
-    # verbose output
-    if verbose:
-        print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-        print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
-        print("---------------------------------------------------------------")
-    
-    # response.function_calls is a list of function calls the model wants to make
-    # “If I had the ability to run functions, here’s what I would call in order.” is what the model is saying
+            # verbose output
+            if verbose:
+                print(f"\nIteration {i+1}/{MAX_ITERATIONS}")
+                print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
+                print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+                print("---------------------------------------------------------------")
 
-    if not response.function_calls:
-        print(response.text)
-        return
+            # Add candidates' content back to conversation
+            for _, candidate in enumerate(response.candidates):
+                message.append(candidate.content)
 
-    for function_call in response.function_calls:
-        function_call_result = call_function(function_call, verbose)
-        function_response = function_call_result.parts[0].function_response.response
+            # If final text is available → done
+            if not response.function_calls:
+                print(response.text)
+                break
 
-        if not function_response:
-            raise ValueError("Function response is empty")
-        elif verbose:
-            print(f"-> {function_response['result']}")
+            # Otherwise, handle function calls
+            for function_call in response.function_calls:
+                function_call_result = call_function(function_call, verbose)
+                function_response = function_call_result.parts[0].function_response.response
+
+                if not function_response:
+                    raise ValueError("Function response is empty")
+
+                result_text = (
+                    function_response["result"]
+                    if isinstance(function_response, dict) and "result" in function_response
+                    else str(function_response)
+                )       
+
+                if verbose:
+                    print(f"-> {result_text}")
+
+                user_msg = types.Content(
+                    role="user",
+                    parts=[types.Part(text=result_text)]
+                )
+                message.append(user_msg)
+
+        except Exception as e:
+            print(f"Error during iteration {i+1}: {e}")
+            break
+    else:
+        # Only runs if loop finished all 20 iterations without break
+        print("Reached maximum iterations without final response.")
 
 if __name__ == "__main__":
     main()
